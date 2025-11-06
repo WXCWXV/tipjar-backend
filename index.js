@@ -1,55 +1,50 @@
-// index.js (Render)
 import express from "express";
 import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 
-const API_KEY = process.env.ROBLOX_API_KEY; // if you need OpenCloud for inventory, keep it. For creator catalog this is public.
+// No need for API key for this creator catalog method
+// (Leave environment key as-is, not used here)
 
 app.get("/creatorpasses/:creatorId", async (req, res) => {
   const creatorId = req.params.creatorId;
-  if (!creatorId) return res.status(400).json({ success: false, passes: [] });
 
   try {
-    // Catalog search for items created by the user (game passes)
-    // This works for passes created by the user (may respect privacy for some fields)
-    const catalogUrl = `https://catalog.roproxy.com/v1/search/items/details?Category=GamePasses&CreatorType=User&CreatorTargetId=${creatorId}&Limit=100&SortOrder=Asc`;
-    const catalogResp = await fetch(catalogUrl);
-    const catalogJson = await catalogResp.json();
-    if (!catalogJson || !catalogJson.data) return res.json({ success: true, passes: [] });
+    // Fetch passes created by the user (public creator catalog)
+    const searchUrl = `https://catalog.roproxy.com/v1/search/items/details?Category=GamePasses&CreatorType=User&CreatorTargetId=${creatorId}&Limit=100&SortOrder=Asc`;
+    const searchResp = await fetch(searchUrl);
+    const searchData = await searchResp.json();
 
-    const items = catalogJson.data;
-    const out = [];
+    if (!searchData || !searchData.data) {
+      return res.json({ success: true, passes: [] });
+    }
 
-    // For each item we fetch details (price, icon). Use economy.roblox.com details endpoint.
-    for (const it of items) {
+    const results = [];
+
+    for (const item of searchData.data) {
       try {
-        const detailsResp = await fetch(`https://economy.roblox.com/v2/game-passes/${it.id}/details`);
-        const details = await detailsResp.json();
-        // Check for validity and price
-        const price = details && details.product && details.product.priceInRobux != null ? details.product.priceInRobux : nil;
-        const iconId = details && details.iconImageAssetId or null;
+        const detailResp = await fetch(`https://economy.roblox.com/v2/game-passes/${item.id}/details`);
+        const details = await detailResp.json();
 
-        // Only include passes that have a price (on sale)
-        if (price !== null && price !== undefined) {
-          out.push({
-            id: it.id,
-            name: it.name,
-            PriceInRobux: price,
-            IconImageAssetId: details.iconImageAssetId or 0
+        if (details && details.product && details.product.priceInRobux != null) {
+          results.push({
+            id: item.id,
+            name: item.name || "Unnamed Pass",
+            PriceInRobux: details.product.priceInRobux,
+            IconImageAssetId: details.iconImageAssetId || 0
           });
         }
-      } catch (e) {
-        console.log("details fetch failed for", it.id, e);
+      } catch (err) {
+        console.log("Detail fetch failed:", err);
       }
     }
 
-    return res.json({ success: true, passes: out });
+    return res.json({ success: true, passes: results });
   } catch (err) {
     console.log("Backend error:", err);
     return res.json({ success: false, passes: [] });
   }
 });
 
-app.listen(10000, () => console.log("Server running on port 10000"));
+app.listen(10000, () => console.log("✅ Tipjar backend is running"));
