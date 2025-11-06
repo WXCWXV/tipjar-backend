@@ -4,11 +4,11 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
-// API key will be set in Render Environment Variables
 const API_KEY = process.env.ROBLOX_API_KEY;
 
 app.get("/passes/:userId", async (req, res) => {
   const userId = req.params.userId;
+  if (!userId) return res.status(400).json({ success: false, passes: [] });
 
   try {
     const response = await fetch(
@@ -17,18 +17,32 @@ app.get("/passes/:userId", async (req, res) => {
     );
 
     const data = await response.json();
-    if (!data || !data.data) return res.json({ success: false, passes: [] });
+    if (!data || !data.data) return res.json({ success: true, passes: [] });
 
-    const formatted = data.data.map(item => ({
-      id: item.id,
-      name: item.name
-    }));
+    // Get detailed data for each pass
+    const detailedPasses = [];
 
-    res.json({ success: true, passes: formatted });
+    for (const item of data.data) {
+      const infoResponse = await fetch(
+        `https://economy.roblox.com/v2/game-passes/${item.id}/details`
+      );
+      const info = await infoResponse.json();
+
+      if (info && info.product && info.product.priceInRobux !== null) {
+        detailedPasses.push({
+          id: item.id,
+          name: item.name,
+          PriceInRobux: info.product.priceInRobux,
+          IconImageAssetId: info.iconImageAssetId
+        });
+      }
+    }
+
+    res.json({ success: true, passes: detailedPasses });
   } catch (err) {
     console.log("Backend Error:", err);
     res.json({ success: false, passes: [] });
   }
 });
 
-app.listen(10000, () => console.log("Server running"));
+app.listen(10000, () => console.log("Server running on 10000"));
